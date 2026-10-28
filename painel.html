@@ -3,96 +3,280 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Versaniche — Gestão</title>
+  <title>Versaniche Gestão — Jarvis</title>
   <style>
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
       background: #f3f5fa;
       color: #182339;
+      font-family: Arial, sans-serif;
     }
-    header {
-      background: #14213b;
-      color: white;
-      padding: 28px max(24px, calc((100vw - 1100px) / 2));
-    }
+    header { background: #14213b; color: white; padding: 28px; }
     header p { color: #c1cde1; }
-    main { max-width: 1150px; margin: auto; padding: 24px; }
+    main { max-width: 1100px; margin: auto; padding: 24px; }
+    h1, h2 { margin-top: 0; }
+    h2 { font-size: 20px; }
+    .aviso {
+      padding: 18px;
+      background: #fff4dc;
+      border: 1px solid #efd49a;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
     }
     .card {
       background: white;
       border: 1px solid #e1e6ef;
       border-radius: 14px;
-      padding: 24px;
-      margin-bottom: 18px;
+      padding: 22px;
+      margin-bottom: 20px;
     }
     .valor { font-size: 28px; font-weight: bold; }
     .muted { color: #627087; line-height: 1.6; }
-    .aviso {
-      background: #fff4dc;
-      border: 1px solid #efd49a;
-      border-radius: 10px;
-      padding: 18px;
-      margin-bottom: 24px;
+    #conversa {
+      height: 360px;
+      overflow-y: auto;
+      background: #f7f9fc;
+      border: 1px solid #e1e6ef;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 18px 0;
     }
-    h1, h2 { margin-top: 0; }
-    h2 { font-size: 19px; }
-    li { padding: 8px 0; line-height: 1.5; }
+    .mensagem {
+      padding: 14px;
+      margin-bottom: 14px;
+      border-radius: 12px;
+      background: #e8edf6;
+      overflow-wrap: anywhere;
+    }
+    .usuario { background: #dceeff; }
+    .mensagem p {
+      margin: 8px 0 0;
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+    textarea {
+      width: 100%;
+      min-height: 90px;
+      padding: 14px;
+      font: inherit;
+      border: 1px solid #acb8cc;
+      border-radius: 10px;
+      resize: vertical;
+    }
+    label { display: block; margin-bottom: 8px; font-weight: bold; }
+    .acoes { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+    button {
+      background: #174bb8;
+      color: white;
+      border: 0;
+      border-radius: 9px;
+      padding: 13px 20px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.secundario { background: #e8edf6; color: #182339; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #estado { min-height: 24px; line-height: 1.5; }
+    .privacidade { font-size: 13px; }
   </style>
 </head>
 <body>
   <header>
     <h1>Versaniche Gestão</h1>
-    <p>Vendas, produtos e decisões em um só lugar.</p>
+    <p>Seu negócio, seus dados e seu assistente.</p>
   </header>
 
   <main>
     <div class="aviso">
-      <strong>Configuração em andamento</strong><br>
-      O Mercado Livre ainda não foi conectado.
-      Os indicadores serão calculados após a importação.
+      <strong>Mercado Livre ainda não conectado.</strong>
+      Os indicadores aguardam importação.
+      O Jarvis pode conversar e ajudar com as informações que você fornecer.
     </div>
 
-    <section class="grid" aria-label="Indicadores de vendas">
+    <section class="grid" aria-label="Indicadores">
       <article class="card">
         <h2>Faturamento</h2>
         <div class="valor">—</div>
-        <p class="muted">Aguardando importação das vendas.</p>
+        <p class="muted">Aguardando vendas.</p>
       </article>
       <article class="card">
         <h2>Pedidos</h2>
         <div class="valor">—</div>
-        <p class="muted">Aguardando importação dos pedidos.</p>
+        <p class="muted">Aguardando pedidos.</p>
       </article>
       <article class="card">
         <h2>Margem</h2>
         <div class="valor">—</div>
-        <p class="muted">Depende das vendas, taxas e custos cadastrados.</p>
+        <p class="muted">Depende das vendas, taxas e custos.</p>
       </article>
     </section>
 
     <section class="card">
-      <h2>Próximas configurações</h2>
-      <ol>
-        <li>Conectar a conta do Mercado Livre.</li>
-        <li>Importar pedidos e anúncios.</li>
-        <li>Cadastrar custos dos produtos.</li>
-        <li>Calcular os indicadores do negócio.</li>
-      </ol>
-    </section>
-
-    <section class="card">
-      <h2>Assistente de gestão</h2>
+      <h2>Jarvis da Versaniche</h2>
       <p class="muted">
-        Em preparação. A conversa com inteligência artificial
-        ainda não está disponível.
+        Converse sobre gestão, preços e ideias de anúncios.
+        Nesta versão, o assistente não consulta suas vendas
+        nem executa ações no Mercado Livre.
+      </p>
+
+      <div id="conversa"
+           role="log"
+           aria-label="Conversa com o Jarvis"
+           aria-live="polite"></div>
+
+      <form id="formulario">
+        <label for="pergunta">O que você quer perguntar?</label>
+        <textarea id="pergunta"
+                  maxlength="2000"
+                  placeholder="Ex.: Como calcular a margem de um filamento?"
+                  required></textarea>
+
+        <div class="acoes">
+          <button id="enviar" type="submit">Enviar ao Jarvis</button>
+          <button id="limpar" type="button" class="secundario">
+            Nova conversa
+          </button>
+        </div>
+      </form>
+
+      <p id="estado" role="status"></p>
+
+      <p class="muted privacidade">
+        As mensagens são enviadas à API da OpenAI, com cobrança por uso.
+        Não envie senhas ou chaves. O histórico fica apenas nesta página
+        e é perdido ao atualizar. Em conversas longas, somente os trechos
+        recentes são enviados como contexto. Confira cálculos e decisões.
       </p>
     </section>
   </main>
+
+  <script>
+    const conversa = document.getElementById("conversa");
+    const formulario = document.getElementById("formulario");
+    const pergunta = document.getElementById("pergunta");
+    const enviar = document.getElementById("enviar");
+    const limpar = document.getElementById("limpar");
+    const estado = document.getElementById("estado");
+
+    let historico = [];
+    let enviando = false;
+
+    function mostrar(nome, texto, usuario = false) {
+      const caixa = document.createElement("div");
+      caixa.className = "mensagem" + (usuario ? " usuario" : "");
+
+      const titulo = document.createElement("strong");
+      titulo.textContent = nome;
+
+      const conteudo = document.createElement("p");
+      conteudo.textContent = texto;
+
+      caixa.append(titulo, conteudo);
+      conversa.appendChild(caixa);
+      conversa.scrollTop = conversa.scrollHeight;
+    }
+
+    function iniciarConversa() {
+      historico = [];
+      conversa.replaceChildren();
+      pergunta.value = "";
+      estado.textContent = "";
+
+      mostrar(
+        "Jarvis",
+        "Olá, Chefe Supremo! Como posso ajudar na gestão da Versaniche?"
+      );
+    }
+
+    limpar.addEventListener("click", () => {
+      if (!enviando) iniciarConversa();
+    });
+
+    formulario.addEventListener("submit", async (evento) => {
+      evento.preventDefault();
+      if (enviando) return;
+
+      const texto = pergunta.value.trim();
+      if (!texto) return;
+
+      const contexto = historico.slice(-8).map((m) => ({
+        role: m.role,
+        content: m.content.slice(0, 1500)
+      }));
+
+      const mensagens = [
+        ...contexto,
+        { role: "user", content: texto }
+      ];
+
+      const tamanho = () =>
+        new TextEncoder().encode(
+          JSON.stringify({ mensagens })
+        ).length;
+
+      while (tamanho() > 18000 && mensagens.length > 1) {
+        mensagens.shift();
+      }
+
+      enviando = true;
+      enviar.disabled = true;
+      limpar.disabled = true;
+      estado.textContent = "Jarvis está preparando a resposta…";
+
+      try {
+        const resposta = await fetch("/api/jarvis", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(60000),
+          body: JSON.stringify({ mensagens })
+        });
+
+        const dados = await resposta.json().catch(() => ({}));
+
+        if (!resposta.ok) {
+          throw new Error(
+            dados.erro ||
+            "Não foi possível conversar. Confira se o login está ativo."
+          );
+        }
+
+        if (typeof dados.resposta !== "string") {
+          throw new Error("O servidor retornou uma resposta inválida.");
+        }
+
+        mostrar("Você", texto, true);
+        mostrar("Jarvis", dados.resposta);
+
+        historico.push(
+          { role: "user", content: texto },
+          { role: "assistant", content: dados.resposta }
+        );
+
+        historico = historico.slice(-12);
+        pergunta.value = "";
+        estado.textContent = "";
+      } catch (erro) {
+        estado.textContent =
+          erro.name === "TimeoutError"
+            ? "A resposta demorou demais. Tente novamente."
+            : erro.message;
+      } finally {
+        enviando = false;
+        enviar.disabled = false;
+        limpar.disabled = false;
+        pergunta.focus();
+      }
+    });
+
+    iniciarConversa();
+  </script>
 </body>
 </html>
