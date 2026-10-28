@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Versaniche — Gestão</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f5fa;
+      color: #182339;
+    }
+    header {
+      background: #14213b;
+      color: white;
+      padding: 28px max(24px, calc((100vw - 1100px) / 2));
+    }
+    header p { color: #c1cde1; }
+    main { max-width: 1150px; margin: auto; padding: 24px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: white;
+      border: 1px solid #e1e6ef;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 18px;
+    }
+    .valor { font-size: 28px; font-weight: bold; }
+    .muted { color: #627087; line-height: 1.6; }
+    .aviso {
+      background: #fff4dc;
+      border: 1px solid #efd49a;
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 24px;
+    }
+    h1, h2 { margin-top: 0; }
+    h2 { font-size: 19px; }
+    li { padding: 8px 0; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Versaniche Gestão</h1>
+    <p>Vendas, produtos e decisões em um só lugar.</p>
+  </header>
+
+  <main>
+    <div class="aviso">
+      <strong>Configuração em andamento</strong><br>
+      O Mercado Livre ainda não foi conectado.
+      Os indicadores serão calculados após a importação.
+    </div>
+
+    <section class="grid" aria-label="Indicadores de vendas">
+      <article class="card">
+        <h2>Faturamento</h2>
+        <div class="valor">—</div>
+        <p class="muted">Aguardando importação das vendas.</p>
+      </article>
+      <article class="card">
+        <h2>Pedidos</h2>
+        <div class="valor">—</div>
+        <p class="muted">Aguardando importação dos pedidos.</p>
+      </article>
+      <article class="card">
+        <h2>Margem</h2>
+        <div class="valor">—</div>
+        <p class="muted">Depende das vendas, taxas e custos cadastrados.</p>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Próximas configurações</h2>
+      <ol>
+        <li>Conectar a conta do Mercado Livre.</li>
+        <li>Importar pedidos e anúncios.</li>
+        <li>Cadastrar custos dos produtos.</li>
+        <li>Calcular os indicadores do negócio.</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>Assistente de gestão</h2>
+      <p class="muted">
+        Em preparação. A conversa com inteligência artificial
+        ainda não está disponível.
+      </p>
+    </section>
+  </main>
+</body>
+</html>
