@@ -1,29 +1,52 @@
 const http = require("node:http");
+const crypto = require("node:crypto");
 const { MongoClient } = require("mongodb");
 
 const port = Number(process.env.PORT || 3000);
+const adminUser = process.env.ADMIN_USER;
+const adminPassword = process.env.ADMIN_PASSWORD;
 
 let bancoStatus = "Testando conexão...";
 let client;
 
+function iguais(a, b) {
+  const hash = (valor) =>
+    crypto.createHash("sha256").update(valor).digest();
+
+  return crypto.timingSafeEqual(hash(a), hash(b));
+}
+
+function autorizado(req) {
+  if (!adminUser || !adminPassword) return false;
+
+  const authorization = req.headers.authorization || "";
+  if (!authorization.startsWith("Basic ")) return false;
+
+  const credenciais = Buffer.from(
+    authorization.slice(6),
+    "base64"
+  ).toString("utf8");
+
+  const separador = credenciais.indexOf(":");
+  if (separador < 0) return false;
+
+  const usuario = credenciais.slice(0, separador);
+  const senha = credenciais.slice(separador + 1);
+
+  const usuarioCorreto = iguais(usuario, adminUser);
+  const senhaCorreta = iguais(senha, adminPassword);
+
+  return usuarioCorreto && senhaCorreta;
+}
+
 async function testarBanco() {
-  const uri = process.env.MONGODB_URI;
-
-  if (!uri) {
-    bancoStatus = "Falta configurar MONGODB_URI no Render.";
-    console.log(bancoStatus);
-    return;
-  }
-
-  if (uri.includes("<db_password>")) {
-    bancoStatus =
-      "O endereço ainda contém <db_password>. Insira a senha do banco no Render.";
-    console.log(bancoStatus);
+  if (!process.env.MONGODB_URI) {
+    bancoStatus = "Falta configurar MONGODB_URI.";
     return;
   }
 
   try {
-    client = new MongoClient(uri, {
+    client = new MongoClient(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 15000,
       connectTimeoutMS: 10000,
       maxPoolSize: 5
@@ -34,28 +57,8 @@ async function testarBanco() {
 
     bancoStatus = "MongoDB conectado com sucesso!";
     console.log(bancoStatus);
-  } catch (erro) {
-    if (erro.code === 18 || erro.code === 8000) {
-      bancoStatus =
-        "Falha de autenticação: conferir usuário e senha do banco.";
-    } else if (erro.name === "MongoParseError") {
-      bancoStatus =
-        "O endereço MONGODB_URI está em formato inválido.";
-    } else if (
-      erro.code === "ENOTFOUND" ||
-      erro.code === "ESERVFAIL" ||
-      erro.code === "ECONNREFUSED"
-    ) {
-      bancoStatus =
-        "Falha de rede ou DNS: conferir o endereço do cluster.";
-    } else if (erro.name === "MongoServerSelectionError") {
-      bancoStatus =
-        "Não foi possível alcançar o cluster: conferir rede, IPs autorizados e disponibilidade.";
-    } else {
-      bancoStatus =
-        "Falha de conexão ainda não identificada.";
-    }
-
+  } catch {
+    bancoStatus = "Falha na conexão com o MongoDB.";
     console.log(bancoStatus);
 
     if (client) {
@@ -64,21 +67,30 @@ async function testarBanco() {
   }
 }
 
-function escaparHtml(texto) {
-  return texto
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
 const server = http.createServer((req, res) => {
-  const path = (req.url || "/").split("?")[0];
-
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+
+  if (!adminUser || !adminPassword) {
+    res.writeHead(503);
+    res.end("Acesso indisponível: configure as credenciais no Render.");
+    return;
+  }
+
+  if (!autorizado(req)) {
+    res.setHeader(
+      "WWW-Authenticate",
+      'Basic realm="Versaniche Vendas", charset="UTF-8"'
+    );
+    res.writeHead(401);
+    res.end("Entre com seu usuário e senha para acessar.");
+    return;
+  }
+
+  const path = (req.url || "/").split("?")[0];
 
   if (path === "/") {
     res.writeHead(200);
@@ -92,14 +104,16 @@ const server = http.createServer((req, res) => {
         </head>
         <body style="font-family:Arial;padding:40px">
           <h1>Versaniche Vendas</h1>
-          <p>Servidor funcionando!</p>
+          <p>Acesso autorizado ao painel.</p>
 
-          <h2>Teste do banco de dados</h2>
-          <p>${escaparHtml(bancoStatus)}</p>
+          <h2>Banco de dados</h2>
+          <p>${bancoStatus}</p>
 
-          <p>
-            A integração com o Mercado Livre ainda está pendente.
-          </p>
+          <h2>Mercado Livre</h2>
+          <p>Integração pendente de configuração.</p>
+
+          <h2>Vendas</h2>
+          <p>Nenhuma venda importada ainda.</p>
         </body>
       </html>
     `);
