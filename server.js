@@ -1,138 +1,128 @@
-async function iniciarImportacaoML(req, res) {
-  if (req.headers.origin !== origemPainel) return json(res, 403, { erro: "Origem não autorizada." });
-  const conta = await contaML();
-  if (conta.reconectar) throw erroML("Autorize novamente a conta antes de importar.", 409);
-  if (trabalhoML?.estado === "importando") return json(res, 202, { mensagem: "Importação já em andamento." });
-  if (trabalhoML && Date.now() - trabalhoML.inicio < 60000) {
-    return json(res, 429, { erro: "Aguarde um minuto entre importações." });
-  }
-  const trabalho = { conta: String(conta._id), inicio: Date.now(), estado: "importando", pedidos: 0 };
-  trabalhoML = trabalho;
-  importarPedidosML(conta, trabalho).then(() => {
-    trabalho.estado = "concluido";
-  }).catch((erro) => {
-    trabalho.estado = "erro";
-    trabalho.erro = erro.publico ? erro.message : "Falha de comunicação ou banco. Os indicadores anteriores foram preservados.";
-  });
-  return json(res, 202, { mensagem: "Importação iniciada." });
+const http = require("node:http");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+const { MongoClient } = require("mongodb");
+
+const port = Number(process.env.PORT || 3000);
+const adminUser = process.env.ADMIN_USER;
+const adminPassword = process.env.ADMIN_PASSWORD;
+
+const painel = fs.readFileSync(
+  path.join(__dirname, "painel.html"),
+  "utf8"
+);
+
+let bancoStatus = "Testando conexão...";
+let bancoPronto = false;
+let client;
+let ocupado = false;
+let pedidosIA = [];
+let tentativasLogin = [];
+
+const autorizacoesML = new Map();
+
+function iguais(a, b) {
+  const hash = (valor) =>
+    crypto
+      .createHash("sha256")
+      .update(String(valor ?? ""))
+      .digest();
+
+  return crypto.timingSafeEqual(hash(a), hash(b));
 }
 
-const server = http.createServer(async (req, res) => {
-  res.setHeader(
-    "Content-Type",
-    "text/html; charset=utf-8"
+function autorizado(req) {
+  const header = req.headers.authorization || "";
+  if (!header.startsWith("Basic ")) return false;
+
+  const texto = Buffer.from(
+    header.slice(6),
+    "base64"
+  ).toString("utf8");
+
+  const posicao = texto.indexOf(":");
+  if (posicao < 0) return false;
+
+  const usuarioCorreto = iguais(
+    texto.slice(0, posicao),
+    adminUser
   );
-  res.setHeader("Cache-Control", "no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "no-referrer");
 
-  if (!adminUser || !adminPassword) {
-    res.writeHead(503);
-    return res.end(
-      "Configure as credenciais do painel no Render."
-    );
-  }
+  const senhaCorreta = iguais(
+    texto.slice(posicao + 1),
+    adminPassword
+  );
 
-  if (!autorizado(req)) {
-    const agora = Date.now();
+  return usuarioCorreto && senhaCorreta;
+}
 
-    tentativasLogin = tentativasLogin.filter(
-      (t) => agora - t < 60000
-    );
+function json(res, status, dados) {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8"
+  });
+  res.end(JSON.stringify(dados));
+}
 
-    if (tentativasLogin.length >= 30) {
-      res.writeHead(429, {
-        "Retry-After": "60"
-      });
+async function lerJson(req) {
+  const partes = [];
+  let tamanho = 0;
 
-      return res.end(
-        "Muitas tentativas. Aguarde um minuto."
-      );
+  for await (const parte of req) {
+    tamanho += parte.length;
+
+    if (tamanho > 20000) {
+      throw new Error("Mensagem muito grande.");
     }
 
-    tentativasLogin.push(agora);
-
-    res.setHeader(
-      "WWW-Authenticate",
-      'Basic realm="Versaniche Vendas", charset="UTF-8"'
-    );
-
-    res.writeHead(401);
-
-    return res.end(
-      "Entre com seu usuário e senha."
-    );
+    partes.push(parte);
   }
 
-  const rota = (req.url || "/").split("?")[0];
+  return JSON.parse(
+    Buffer.concat(partes).toString("utf8")
+  );
+}
+
+async function testarBanco() {
+  bancoPronto = false;
+
+  if (!process.env.MONGODB_URI) {
+    bancoStatus = "Falta configurar MONGODB_URI.";
+    return;
+  }
 
   try {
-    if (
-      req.method === "GET" &&
-      ["/", "/painel"].includes(rota)
-    ) {
-      res.writeHead(200);
-      return res.end(painel);
+    client = new MongoClient(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 15000,
+      connectTimeoutMS: 10000,
+      maxPoolSize: 5
+    });
+
+    await client.connect();
+    await client.db("admin").command({ ping: 1 });
+
+    bancoPronto = true;
+    bancoStatus = "MongoDB conectado com sucesso!";
+    console.log(bancoStatus);
+  } catch {
+    bancoStatus = "Falha na conexão com o MongoDB.";
+    console.log(bancoStatus);
+
+    if (client) {
+      await client.close().catch(() => {});
     }
-
-    if (
-      req.method === "GET" &&
-      rota === "/status"
-    ) {
-      res.writeHead(200, {
-        "Content-Type": "text/plain; charset=utf-8"
-      });
-
-      return res.end(bancoStatus);
-    }
-
-    if (req.method === "GET" && rota === "/api/mercadolivre/status") {
-      return await estadoMercadoLivre(req, res);
-    }
-
-    if (req.method === "POST" && rota === "/api/mercadolivre/importar") {
-      return await iniciarImportacaoML(req, res);
-    }
-
-    if (
-      req.method === "POST" &&
-      rota === "/api/jarvis"
-    ) {
-      return await conversar(req, res);
-    }
-
-    if (
-      req.method === "GET" &&
-      rota === "/api/mercadolivre/conectar"
-    ) {
-      return await conectarMercadoLivre(req, res);
-    }
-
-    if (
-      req.method === "GET" &&
-      rota === "/api/mercadolivre/callback"
-    ) {
-      return await retornoMercadoLivre(req, res);
-    }
-
-    res.writeHead(404);
-    return res.end("Página não encontrada.");
-  } catch (erro) {
-    if (!res.headersSent) {
-      return json(res, erro.publico ? erro.status : 500, {
-        erro: erro.publico ? erro.message : "Erro interno do servidor."
-      });
-    }
-
-    res.end();
   }
-});
+}
 
-server.listen(port, "0.0.0.0", () => {
-  console.log(
-    `Servidor iniciado na porta ${port}`
-  );
+async function conversar(req, res) {
+  const origem = req.headers.origin;
+  const origemPermitida =
+    "https://versaniche-vendas.onrender.com";
 
-  testarBanco();
-});
+  if (origem !== origemPermitida) {
+    return json(res, 403, {
+      erro: "Origem não autorizada."
+    });
+  }
+
+  const tipo = req.headers["content-type"] || "";
