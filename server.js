@@ -1,5 +1,7 @@
 const http = require("node:http");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const { MongoClient } = require("mongodb");
 
 const port = Number(process.env.PORT || 3000);
@@ -8,6 +10,11 @@ const adminPassword = process.env.ADMIN_PASSWORD;
 
 let bancoStatus = "Testando conexão...";
 let client;
+
+const painel = fs.readFileSync(
+  path.join(__dirname, "painel.html"),
+  "utf8"
+);
 
 function iguais(a, b) {
   const hash = (valor) =>
@@ -76,7 +83,7 @@ const server = http.createServer((req, res) => {
 
   if (!adminUser || !adminPassword) {
     res.writeHead(503);
-    res.end("Acesso indisponível: configure as credenciais no Render.");
+    res.end("Configure as credenciais de acesso no Render.");
     return;
   }
 
@@ -86,41 +93,26 @@ const server = http.createServer((req, res) => {
       'Basic realm="Versaniche Vendas", charset="UTF-8"'
     );
     res.writeHead(401);
-    res.end("Entre com seu usuário e senha para acessar.");
+    res.end("Entre com seu usuário e senha.");
     return;
   }
 
-  const path = (req.url || "/").split("?")[0];
+  const rota = (req.url || "/").split("?")[0];
 
-  if (path === "/") {
+  if (rota === "/" || rota === "/painel") {
     res.writeHead(200);
-    res.end(`
-      <!doctype html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width">
-          <title>Versaniche Vendas</title>
-        </head>
-        <body style="font-family:Arial;padding:40px">
-          <h1>Versaniche Vendas</h1>
-          <p>Acesso autorizado ao painel.</p>
-
-          <h2>Banco de dados</h2>
-          <p>${bancoStatus}</p>
-
-          <h2>Mercado Livre</h2>
-          <p>Integração pendente de configuração.</p>
-
-          <h2>Vendas</h2>
-          <p>Nenhuma venda importada ainda.</p>
-        </body>
-      </html>
-    `);
+    res.end(painel);
     return;
   }
 
-  if (path === "/api/mercadolivre/callback") {
+  if (rota === "/status") {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.writeHead(200);
+    res.end(bancoStatus);
+    return;
+  }
+
+  if (rota === "/api/mercadolivre/callback") {
     res.writeHead(503);
     res.end("A integração ainda está em configuração.");
     return;
