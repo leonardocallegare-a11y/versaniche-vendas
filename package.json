@@ -1,4 +1,5 @@
-"name": "versaniche-vendas",
+{
+  "name": "versaniche-vendas",
   "version": "1.0.0",
   "private": true,
   "scripts": {
