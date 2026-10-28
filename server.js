@@ -14,14 +14,20 @@ const painel = fs.readFileSync(
 );
 
 let bancoStatus = "Testando conexão...";
+let bancoPronto = false;
 let client;
 let ocupado = false;
 let pedidosIA = [];
 let tentativasLogin = [];
 
+const autorizacoesML = new Map();
+
 function iguais(a, b) {
   const hash = (valor) =>
-    crypto.createHash("sha256").update(valor).digest();
+    crypto
+      .createHash("sha256")
+      .update(String(valor ?? ""))
+      .digest();
 
   return crypto.timingSafeEqual(hash(a), hash(b));
 }
@@ -31,18 +37,21 @@ function autorizado(req) {
   if (!header.startsWith("Basic ")) return false;
 
   const texto = Buffer.from(
-    header.slice(6), "base64"
+    header.slice(6),
+    "base64"
   ).toString("utf8");
 
   const posicao = texto.indexOf(":");
   if (posicao < 0) return false;
 
   const usuarioCorreto = iguais(
-    texto.slice(0, posicao), adminUser
+    texto.slice(0, posicao),
+    adminUser
   );
 
   const senhaCorreta = iguais(
-    texto.slice(posicao + 1), adminPassword
+    texto.slice(posicao + 1),
+    adminPassword
   );
 
   return usuarioCorreto && senhaCorreta;
@@ -61,16 +70,22 @@ async function lerJson(req) {
 
   for await (const parte of req) {
     tamanho += parte.length;
+
     if (tamanho > 20000) {
       throw new Error("Mensagem muito grande.");
     }
+
     partes.push(parte);
   }
 
-  return JSON.parse(Buffer.concat(partes).toString("utf8"));
+  return JSON.parse(
+    Buffer.concat(partes).toString("utf8")
+  );
 }
 
 async function testarBanco() {
+  bancoPronto = false;
+
   if (!process.env.MONGODB_URI) {
     bancoStatus = "Falta configurar MONGODB_URI.";
     return;
@@ -86,12 +101,16 @@ async function testarBanco() {
     await client.connect();
     await client.db("admin").command({ ping: 1 });
 
+    bancoPronto = true;
     bancoStatus = "MongoDB conectado com sucesso!";
     console.log(bancoStatus);
   } catch {
     bancoStatus = "Falha na conexão com o MongoDB.";
     console.log(bancoStatus);
-    if (client) await client.close().catch(() => {});
+
+    if (client) {
+      await client.close().catch(() => {});
+    }
   }
 }
 
@@ -101,12 +120,17 @@ async function conversar(req, res) {
     "https://versaniche-vendas.onrender.com";
 
   if (origem !== origemPermitida) {
-    return json(res, 403, { erro: "Origem não autorizada." });
+    return json(res, 403, {
+      erro: "Origem não autorizada."
+    });
   }
 
   const tipo = req.headers["content-type"] || "";
+
   if (!tipo.startsWith("application/json")) {
-    return json(res, 415, { erro: "Formato inválido." });
+    return json(res, 415, {
+      erro: "Formato inválido."
+    });
   }
 
   if (!process.env.OPENAI_API_KEY) {
@@ -116,6 +140,7 @@ async function conversar(req, res) {
   }
 
   let dados;
+
   try {
     dados = await lerJson(req);
   } catch {
@@ -125,7 +150,9 @@ async function conversar(req, res) {
   }
 
   if (!Array.isArray(dados?.mensagens)) {
-    return json(res, 400, { erro: "Conversa inválida." });
+    return json(res, 400, {
+      erro: "Conversa inválida."
+    });
   }
 
   const mensagens = dados.mensagens;
@@ -149,7 +176,10 @@ async function conversar(req, res) {
   }
 
   const agora = Date.now();
-  pedidosIA = pedidosIA.filter((t) => agora - t < 60000);
+
+  pedidosIA = pedidosIA.filter(
+    (t) => agora - t < 60000
+  );
 
   if (ocupado || pedidosIA.length >= 8) {
     return json(res, 429, {
@@ -196,10 +226,13 @@ Não peça senhas, tokens nem chaves de API.
       }
     );
 
-    const resultado = await resposta.json().catch(() => ({}));
+    const resultado = await resposta.json().catch(
+      () => ({})
+    );
 
     if (!resposta.ok) {
-      let erro = "A IA não respondeu. Tente novamente depois.";
+      let erro =
+        "A IA não respondeu. Tente novamente depois.";
 
       if (resposta.status === 401) {
         erro = "A chave da OpenAI não foi aceita.";
@@ -231,7 +264,9 @@ Não peça senhas, tokens nem chaves de API.
       });
     }
 
-    return json(res, 200, { resposta: texto });
+    return json(res, 200, {
+      resposta: texto
+    });
   } catch {
     return json(res, 502, {
       erro: "Falha de comunicação ou tempo de resposta excedido."
@@ -241,8 +276,238 @@ Não peça senhas, tokens nem chaves de API.
   }
 }
 
+function configuracaoML() {
+  const clientId = process.env.MELI_CLIENT_ID;
+  const clientSecret = process.env.MELI_CLIENT_SECRET;
+  const redirectUri = process.env.MELI_REDIRECT_URI;
+
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw new Error(
+      "Credenciais do Mercado Livre incompletas."
+    );
+  }
+
+  return {
+    clientId,
+    clientSecret,
+    redirectUri
+  };
+}
+
+function limparCookieML(res) {
+  res.setHeader(
+    "Set-Cookie",
+    "meli_oauth=; HttpOnly; Secure; SameSite=Lax; Path=/api/mercadolivre; Max-Age=0"
+  );
+}
+
+async function conectarMercadoLivre(req, res) {
+  let config;
+
+  try {
+    config = configuracaoML();
+  } catch {
+    return json(res, 503, {
+      erro: "Confira MELI_CLIENT_ID, MELI_CLIENT_SECRET e MELI_REDIRECT_URI no Render."
+    });
+  }
+
+  if (!bancoPronto || !client) {
+    return json(res, 503, {
+      erro: "MongoDB indisponível. Confira /status antes de conectar."
+    });
+  }
+
+  try {
+    await client.db("admin").command({ ping: 1 });
+  } catch {
+    return json(res, 503, {
+      erro: "Não foi possível acessar o MongoDB."
+    });
+  }
+
+  const agora = Date.now();
+
+  for (const [chave, valor] of autorizacoesML) {
+    if (valor.expira < agora) {
+      autorizacoesML.delete(chave);
+    }
+  }
+
+  if (autorizacoesML.size >= 100) {
+    return json(res, 429, {
+      erro: "Muitas autorizações em andamento. Aguarde alguns minutos."
+    });
+  }
+
+  const state = crypto.randomBytes(32).toString("hex");
+  const navegador = crypto.randomBytes(32).toString("hex");
+
+  autorizacoesML.set(state, {
+    navegador,
+    expira: agora + 10 * 60 * 1000
+  });
+
+  res.setHeader(
+    "Set-Cookie",
+    `meli_oauth=${navegador}; HttpOnly; Secure; SameSite=Lax; Path=/api/mercadolivre; Max-Age=600`
+  );
+
+  const destino = new URL(
+    "https://auth.mercadolivre.com.br/authorization"
+  );
+
+  destino.searchParams.set("response_type", "code");
+  destino.searchParams.set("client_id", config.clientId);
+  destino.searchParams.set("redirect_uri", config.redirectUri);
+  destino.searchParams.set("state", state);
+
+  res.writeHead(302, {
+    Location: destino.toString()
+  });
+
+  return res.end();
+}
+
+async function retornoMercadoLivre(req, res) {
+  const url = new URL(
+    req.url,
+    "https://versaniche-vendas.onrender.com"
+  );
+
+  const state = url.searchParams.get("state");
+  const registro = autorizacoesML.get(state);
+
+  const cookie = (req.headers.cookie || "")
+    .split(";")
+    .map((parte) => parte.trim())
+    .find((parte) =>
+      parte.startsWith("meli_oauth=")
+    );
+
+  const navegador = cookie
+    ? cookie.slice("meli_oauth=".length)
+    : "";
+
+  if (
+    !registro ||
+    registro.expira < Date.now() ||
+    !iguais(navegador, registro.navegador)
+  ) {
+    return json(res, 400, {
+      erro: "Autorização inválida ou expirada. Abra /api/mercadolivre/conectar novamente no mesmo navegador."
+    });
+  }
+
+  autorizacoesML.delete(state);
+  limparCookieML(res);
+
+  if (url.searchParams.has("error")) {
+    return json(res, 400, {
+      erro: "A autorização não foi concluída no Mercado Livre."
+    });
+  }
+
+  const code = url.searchParams.get("code");
+
+  if (!code) {
+    return json(res, 400, {
+      erro: "O Mercado Livre não enviou o código de autorização."
+    });
+  }
+
+  if (!bancoPronto || !client) {
+    return json(res, 503, {
+      erro: "MongoDB indisponível. Confira /status e reinicie a conexão."
+    });
+  }
+
+  try {
+    const config = configuracaoML();
+
+    await client.db("admin").command({ ping: 1 });
+
+    const resposta = await fetch(
+      "https://api.mercadolibre.com/oauth/token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        signal: AbortSignal.timeout(20000),
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: config.clientId,
+          client_secret: config.clientSecret,
+          code,
+          redirect_uri: config.redirectUri
+        })
+      }
+    );
+
+    const tokens = await resposta.json().catch(
+      () => ({})
+    );
+
+    const duracao = Number(tokens.expires_in);
+
+    if (
+      !resposta.ok ||
+      typeof tokens.access_token !== "string" ||
+      !tokens.access_token ||
+      typeof tokens.refresh_token !== "string" ||
+      !tokens.refresh_token ||
+      !tokens.user_id ||
+      !Number.isFinite(duracao) ||
+      duracao <= 0
+    ) {
+      return json(res, 502, {
+        erro: "Não foi possível obter os tokens. Confira as credenciais, a URI de redirect e o fluxo Refresh Token na aplicação. Depois reinicie a conexão."
+      });
+    }
+
+    await client
+      .db("versaniche")
+      .collection("mercadolivre_conexoes")
+      .updateOne(
+        {
+          _id: String(tokens.user_id)
+        },
+        {
+          $set: {
+            client_id: config.clientId,
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            expires_at: new Date(
+              Date.now() + duracao * 1000
+            ),
+            atualizado_em: new Date()
+          }
+        },
+        {
+          upsert: true
+        }
+      );
+
+    res.writeHead(200, {
+      "Content-Type": "text/plain; charset=utf-8"
+    });
+
+    return res.end(
+      "Mercado Livre autorizado! Tokens salvos no MongoDB. Você já pode fechar esta aba e voltar ao painel."
+    );
+  } catch {
+    return json(res, 502, {
+      erro: "Falha ao concluir ou salvar a conexão. Confira o MongoDB e reinicie em /api/mercadolivre/conectar."
+    });
+  }
+}
+
 const server = http.createServer(async (req, res) => {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader(
+    "Content-Type",
+    "text/html; charset=utf-8"
+  );
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -250,27 +515,40 @@ const server = http.createServer(async (req, res) => {
 
   if (!adminUser || !adminPassword) {
     res.writeHead(503);
-    return res.end("Configure as credenciais do painel no Render.");
+    return res.end(
+      "Configure as credenciais do painel no Render."
+    );
   }
 
   if (!autorizado(req)) {
     const agora = Date.now();
+
     tentativasLogin = tentativasLogin.filter(
       (t) => agora - t < 60000
     );
 
     if (tentativasLogin.length >= 30) {
-      res.writeHead(429, { "Retry-After": "60" });
-      return res.end("Muitas tentativas. Aguarde um minuto.");
+      res.writeHead(429, {
+        "Retry-After": "60"
+      });
+
+      return res.end(
+        "Muitas tentativas. Aguarde um minuto."
+      );
     }
 
     tentativasLogin.push(agora);
+
     res.setHeader(
       "WWW-Authenticate",
       'Basic realm="Versaniche Vendas", charset="UTF-8"'
     );
+
     res.writeHead(401);
-    return res.end("Entre com seu usuário e senha.");
+
+    return res.end(
+      "Entre com seu usuário e senha."
+    );
   }
 
   const rota = (req.url || "/").split("?")[0];
@@ -284,34 +562,55 @@ const server = http.createServer(async (req, res) => {
       return res.end(painel);
     }
 
-    if (req.method === "GET" && rota === "/status") {
+    if (
+      req.method === "GET" &&
+      rota === "/status"
+    ) {
       res.writeHead(200, {
         "Content-Type": "text/plain; charset=utf-8"
       });
+
       return res.end(bancoStatus);
     }
 
-    if (req.method === "POST" && rota === "/api/jarvis") {
+    if (
+      req.method === "POST" &&
+      rota === "/api/jarvis"
+    ) {
       return await conversar(req, res);
     }
 
-    if (rota === "/api/mercadolivre/callback") {
-      res.writeHead(503);
-      return res.end("Integração ainda em configuração.");
+    if (
+      req.method === "GET" &&
+      rota === "/api/mercadolivre/conectar"
+    ) {
+      return await conectarMercadoLivre(req, res);
+    }
+
+    if (
+      req.method === "GET" &&
+      rota === "/api/mercadolivre/callback"
+    ) {
+      return await retornoMercadoLivre(req, res);
     }
 
     res.writeHead(404);
-    res.end("Página não encontrada.");
+    return res.end("Página não encontrada.");
   } catch {
     if (!res.headersSent) {
-      json(res, 500, { erro: "Erro interno do servidor." });
-    } else {
-      res.end();
+      return json(res, 500, {
+        erro: "Erro interno do servidor."
+      });
     }
+
+    res.end();
   }
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Servidor iniciado na porta ${port}`);
+  console.log(
+    `Servidor iniciado na porta ${port}`
+  );
+
   testarBanco();
 });
